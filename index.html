@@ -136,6 +136,18 @@ button.sm2{padding:3px 10px;font-size:.85rem}
   .tmid,#paneFile .tmid{padding:90px 14px 0}
   #txtInfo{flex:none;margin:4px 0 0}
 }
+
+/* আউটপুট তালিকা: এক লাইনে ফাইলের নাম + ডাউনলোড আইকন */
+.file.ok{display:flex;align-items:center;gap:8px;padding:7px 0}
+.file.ok a.fname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--brand);font-weight:600;text-decoration:none}
+.file.ok a.fname:hover{text-decoration:underline}
+.file.ok a.dlicon{flex:none;width:28px;height:28px;border-radius:6px;background:var(--brand);display:grid;place-items:center}
+.file.ok a.dlicon:hover{background:var(--brand-hover)}
+.file.ok .warnmark{flex:none;color:var(--warn);cursor:help}
+/* আপলোড তালিকার ফাইলের নামও এক লাইনে */
+.q{align-items:center}
+.q span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:normal}
+.q .sz,.q button{flex:none}
 </style>
 </head>
 <body>
@@ -295,8 +307,22 @@ const CONJ_R_BASE = {
   'ত্র':'\u00CE','ত্ত':'\u00CB','ণ্ড':'\u00D0','ন্ড':'\u00DB','ণ্ট':'\u00C8','দ্ধ':'\u00D7','দ্ব':'\u00D8',
   'ঞ্চ':'\u00C2','ঞ্জ':'\u00C4','ষ্ট':'\u00F3','ষ্ঠ':'\u00F4'
 };
+// B2U-র সব "ব্যঞ্জন্‌+হসন্ত+ব্যঞ্জন" যুক্তাক্ষর উল্টো ম্যাপেও যোগ (যেগুলো আগে থেকে নেই): যেমন স্ট, ক্স, ল্ট, ল্প, ক্ট, হ্ন, হ্ম
+Object.keys(B2U).forEach(g=>{
+  const u = B2U[g];
+  if(/^[\u0995-\u09B9](\u09CD[\u0995-\u09B9])+$/.test(u) && CONJ_R_BASE[u]===undefined) CONJ_R_BASE[u] = g;
+});
+// ফলা চিহ্ন: ব-ফলা ¦, ম-ফলা ¥, ল-ফলা ø (যুক্তাক্ষরের পরে বা সাধারণ ব্যঞ্জনের পরে)
+function phalaGlyph(x, prev){
+  if(x==='\u09AF') return '\u00A8';
+  if(x==='\u09B0') return raGlyph(prev);
+  if(x==='\u09AC') return '\u00A6';
+  if(x==='\u09AE') return '\u00A5';
+  if(x==='\u09B2') return '\u00F8';
+  return null;
+}
 const HALF = { 'ন':'\u203A','স':'\u00AF','ম':'\u00A4','চ':'\u201D' };
-const ALT  = { 'মভ':'\u00A2','মপ':'\u00FA','মব':'^','নত':'\u00CD','সত':'\u00CD','সথ':'\u2019' };
+const ALT  = { 'মম':'\u00A7','মভ':'\u00A2','মপ':'\u00FA','মব':'^','নত':'\u00CD','সত':'\u00CD','সথ':'\u2019' };
 const RA_STEM = 'গঘপফবভমযশষসহধনখঝচজ';
 const KARSET = new Set(['া','ি','ী','ু','ূ','ৃ','ে','ৈ','ো','ৌ','ৗ']);
 
@@ -383,14 +409,22 @@ function clusterToBijoy(c, stats){
     let matched = false;
     for(let len = Math.min(CONJ_MAXLEN, n - i); len >= 2; len--){
       const key = c.slice(i, i+len).join(H);
-      if(CONJ_R[key] !== undefined){ out += CONJ_R[key]; i += len; prevHalf = null; matched = true; break; }
+      if(CONJ_R[key] !== undefined){
+        // হাফ-ফর্মের (ন্, স্ ইত্যাদি) পরে ত্র বসলে বিজয়ে আলাদা গ্লিফ ¿ লাগে (যন্ত্র = hš¿, স্ত্রী = ¯¿x)
+        out += (prevHalf && key === 'ত্র') ? '\u00BF' : CONJ_R[key];
+        i += len; prevHalf = null; matched = true;
+        // যুক্তাক্ষরের পরে র/য/ব/ম/ল-ফলা থাকলে (যেমন স্ট্র = স্ট + র-ফলা) সেটিও বসাতে হবে
+        while(i < n){ const pg = phalaGlyph(c[i], c[i-1]); if(pg === null) break; out += pg; i++; }
+        break;
+      }
     }
     if(matched) continue;
     const ch = c[i];
     if(i < n-1){
       const nx = c[i+1];
-      if(nx === 'য'){ out += glyphFor(ch, prevHalf) + '\u00A8'; i += 2; prevHalf = null; continue; }
-      if(nx === 'র'){ out += glyphFor(ch, prevHalf) + raGlyph(ch); i += 2; prevHalf = null; continue; }
+      if(nx === 'য'){ out += glyphFor(ch, prevHalf) + '\u00A8'; i += 2; while(i < n){ const pg = phalaGlyph(c[i], c[i-1]); if(pg === null) break; out += pg; i++; } prevHalf = null; continue; }
+      if(nx === 'র'){ out += glyphFor(ch, prevHalf) + raGlyph(ch); i += 2; while(i < n){ const pg = phalaGlyph(c[i], c[i-1]); if(pg === null) break; out += pg; i++; } prevHalf = null; continue; }
+      if(!HALF[ch] && (nx === 'ব' || nx === 'ম' || nx === 'ল')){ out += glyphFor(ch, prevHalf) + phalaGlyph(nx, ch); i += 2; while(i < n){ const pg = phalaGlyph(c[i], c[i-1]); if(pg === null) break; out += pg; i++; } prevHalf = null; continue; }
       if(HALF[ch]){
         out += (ch === 'ন' && nx === 'ত') ? '\u0161' : HALF[ch];
         prevHalf = ch; i++; continue;
@@ -929,7 +963,7 @@ function renderQueue(){
   const q = $('queue'); q.innerHTML = '';
   pending.forEach((f, i) => {
     const row = document.createElement('div'); row.className = 'q';
-    const n = document.createElement('span'); n.textContent = f.name;
+    const n = document.createElement('span'); n.textContent = f.name; n.title = f.name;
     const z = document.createElement('span'); z.className = 'sz'; z.textContent = fmtSize(f.size);
     const x = document.createElement('button'); x.textContent = '✕'; x.title = 'বাদ দিন';
     x.onclick = () => { pending.splice(i, 1); renderQueue(); };
@@ -1011,13 +1045,21 @@ async function handleFiles(files){
       const extra = [];
       if(Object.keys(stats.unknown).length) extra.push('অপরিচিত বিজয় অক্ষর: ' + topList(stats.unknown, 12));
       if(Object.keys(stats.unmapped).length) extra.push('ম্যাপে নেই এমন যুক্তাক্ষর (সরল রূপে বসানো হয়েছে): ' + topList(stats.unmapped, 12));
-      meta.textContent = msg;
-      if(extra.length){ const w = document.createElement('div'); w.className = 'meta warn'; w.textContent = extra.join(' | '); card.appendChild(w); }
       if(stats.runs > 0){
+        // সফল হলে শুধু এক লাইনে ফাইলের নাম + ছোট ডাউনলোড আইকন (নামে বা আইকনে ক্লিক করলেই ডাউনলোড)
         done.push({ name: outName, blob });
         $('btnZipAll').disabled = done.length < 2;
-        const a = document.createElement('a'); a.className = 'dl'; a.href = url; a.download = outName; a.textContent = 'ডাউনলোড: ' + outName;
-        card.appendChild(a);
+        const tip = [msg].concat(extra).join('\n');
+        card.className = 'file ok';
+        card.innerHTML = '';
+        const a1 = document.createElement('a'); a1.className = 'fname'; a1.href = url; a1.download = outName; a1.textContent = outName; a1.title = outName + '\n' + tip;
+        const a2 = document.createElement('a'); a2.className = 'dlicon'; a2.href = url; a2.download = outName; a2.title = 'ডাউনলোড'; a2.setAttribute('aria-label', 'ডাউনলোড: ' + outName);
+        a2.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 7 8 10.5 11.5 7M3 13.5h10" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        card.appendChild(a1); card.appendChild(a2);
+        if(extra.length){ const w = document.createElement('span'); w.className = 'warnmark'; w.textContent = '⚠'; w.title = extra.join('\n'); card.insertBefore(w, a2); }
+      } else {
+        meta.textContent = msg;
+        if(extra.length){ const w = document.createElement('div'); w.className = 'meta warn'; w.textContent = extra.join(' | '); card.appendChild(w); }
       }
     } catch(err){
       card.classList.add('err'); meta.textContent = 'ব্যর্থ: ' + err.message;
